@@ -52,9 +52,20 @@ echo "[train] model=$MODEL  images=$N  res=$RESOLUTION  steps=$MAX_STEPS  rank=$
 #      xformers is required. SNR gamma weighting speeds up convergence. ----
 export ACCELERATE_MIXED_PRECISION="fp16"
 
+# The diffusers SDXL trainer applies --variant to BOTH the base model and any
+# explicit VAE. The fp16-fix VAE (madebyollin) ships no ".fp16" variant, so when
+# training with --variant=fp16 we omit the explicit VAE and let the trainer use
+# the base model's VAE subfolder (it keeps the VAE in fp32 internally for stable
+# latents). Set SDXL_VAE_ID explicitly only if that repo has an fp16 variant.
+VAE_ARG=()
+if [ -n "${SDXL_VAE_ID:-}" ] && [ "${SDXL_USE_EXPLICIT_VAE:-0}" = "1" ]; then
+  VAE_ARG=(--pretrained_vae_model_name_or_path="$VAE")
+fi
+
 accelerate launch --num_processes=1 --mixed_precision=fp16 "$TRAIN_SCRIPT" \
   --pretrained_model_name_or_path="$MODEL" \
-  --pretrained_vae_model_name_or_path="$VAE" \
+  "${VAE_ARG[@]}" \
+  --variant="${SDXL_VARIANT:-fp16}" \
   --train_data_dir="$DATA_DIR" \
   --caption_column="text" \
   --resolution="$RESOLUTION" --center_crop --random_flip \

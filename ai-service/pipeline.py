@@ -106,17 +106,22 @@ class SDXLPipeline:
             os.makedirs(LOCAL_LORA_DIR, exist_ok=True)
             weight_name = os.path.basename(self.lora_object_key)
             local_path = os.path.join(LOCAL_LORA_DIR, weight_name)
+            # LORA_OBJECT_KEY may be written with a leading "<bucket>/" prefix for
+            # readability (e.g. "models/living-room-style-v1/..."); the actual
+            # object key inside the bucket must not repeat the bucket name.
+            key = self.lora_object_key
+            if key.startswith(self.lora_bucket + "/"):
+                key = key[len(self.lora_bucket) + 1:]
             try:
-                client.fget_object(self.lora_bucket, self.lora_object_key, local_path)
+                client.fget_object(self.lora_bucket, key, local_path)
             except S3Error as exc:
                 if exc.code in ("NoSuchKey", "NoSuchBucket"):
                     logger.info(
-                        "No LoRA at %s/%s yet; using base SDXL.",
-                        self.lora_bucket, self.lora_object_key,
+                        "No LoRA at %s/%s yet; using base SDXL.", self.lora_bucket, key
                     )
                     return None
                 raise
-            logger.info("Downloaded LoRA -> %s", local_path)
+            logger.info("Downloaded LoRA %s/%s -> %s", self.lora_bucket, key, local_path)
             return local_path
         except Exception as exc:  # noqa: BLE001
             logger.warning("Could not fetch LoRA (%s); using base SDXL.", exc)
