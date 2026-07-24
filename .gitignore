@@ -1,0 +1,44 @@
+# ---- Secrets (NEVER commit) ----
+.env
+*.env
+!.env.example
+kaggle.json
+.kaggle/
+**/access_token
+*.pem
+*.key
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# ---- Models & data (large / regenerable) ----
+data/raw/
+data/prepared/
+data/lora_dataset/
+training/output/
+*.safetensors
+*.ckpt
+*.pt
+*.bin
+hf_cache/
+.hf_home/
+
+# ---- Runtime state ----
+scripts/.bin/
+minio_data/
+backend_data/
+*.sqlite3
+*.db
+generated/
+*.log
+
+# ---- OS / editor ----
+.DS_Store
+.vscode/
+.idea/

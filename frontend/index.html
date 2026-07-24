@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Living Room Generator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="icon"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%9B%8B%EF%B8%8F%3C/text%3E%3C/svg%3E" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">🛋️</span>
+      <div>
+        <h1>AI Living Room Generator</h1>
+        <p class="tagline">Realistic interiors from text — SDXL + LoRA</p>
+      </div>
+    </div>
+    <div class="status" id="status">
+      <span class="dot" id="status-dot"></span>
+      <span id="status-text">checking…</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- ---------------- Controls ---------------- -->
+    <section class="panel controls">
+      <h2>Describe your room</h2>
+
+      <label class="field">
+        <span>Prompt</span>
+        <textarea id="prompt" rows="4"
+          placeholder="A modern Scandinavian living room with a large beige sofa, wooden flooring, indoor plants, floor-to-ceiling windows, natural sunlight…"></textarea>
+      </label>
+
+      <label class="field">
+        <span>Style preset</span>
+        <select id="style"><option value="">— none —</option></select>
+      </label>
+
+      <details class="advanced">
+        <summary>Advanced options</summary>
+
+        <label class="field">
+          <span>Negative prompt <small>(added to defaults)</small></span>
+          <textarea id="negative" rows="2"
+            placeholder="e.g. clutter, duplicate furniture, dark, gloomy"></textarea>
+        </label>
+
+        <label class="field">
+          <span>Aspect ratio</span>
+          <select id="aspect">
+            <option value="1024x1024" selected>Square · 1024×1024</option>
+            <option value="1216x832">Landscape · 1216×832</option>
+            <option value="1344x768">Wide · 1344×768</option>
+            <option value="832x1216">Portrait · 832×1216</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Steps: <b id="steps-val">30</b></span>
+          <input type="range" id="steps" min="10" max="60" value="30" />
+        </label>
+
+        <label class="field">
+          <span>Guidance scale: <b id="cfg-val">7.5</b></span>
+          <input type="range" id="cfg" min="1" max="20" step="0.5" value="7.5" />
+        </label>
+
+        <label class="field">
+          <span>Seed <small>(blank = random)</small></span>
+          <input type="number" id="seed" min="0" placeholder="random" />
+        </label>
+
+        <label class="checkbox">
+          <input type="checkbox" id="enhance" checked />
+          <span>Enhance prompt with LLM</span>
+        </label>
+      </details>
+
+      <button id="generate" class="btn-primary">
+        <span class="btn-label">Generate</span>
+      </button>
+      <p class="hint" id="form-error"></p>
+    </section>
+
+    <!-- ---------------- Result ---------------- -->
+    <section class="panel result">
+      <div id="result-empty" class="placeholder">
+        <span class="ph-icon">🖼️</span>
+        <p>Your generated living room will appear here.</p>
+      </div>
+
+      <div id="result-loading" class="placeholder hidden">
+        <div class="spinner"></div>
+        <p>Generating… SDXL is rendering your room.</p>
+      </div>
+
+      <figure id="result-figure" class="hidden">
+        <img id="result-img" alt="Generated living room" />
+        <figcaption>
+          <div class="meta" id="result-meta"></div>
+          <div class="actions">
+            <a id="download" class="btn-secondary" download>Download</a>
+            <button id="reuse" class="btn-secondary">Reuse settings</button>
+          </div>
+        </figcaption>
+      </figure>
+    </section>
+  </main>
+
+  <!-- ---------------- History ---------------- -->
+  <section class="panel history">
+    <div class="history-head">
+      <h2>History</h2>
+      <button id="refresh-history" class="btn-ghost">Refresh</button>
+    </div>
+    <div id="gallery" class="gallery"></div>
+    <p id="history-empty" class="hint">No generations yet.</p>
+  </section>
+
+  <footer class="footer">
+    <span>SDXL + LoRA · FastAPI · MinIO</span>
+  </footer>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

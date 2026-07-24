@@ -1,0 +1,14 @@
+# Training pipeline (runs on the GPU host, NOT inside docker-compose).
+# NOTE: install a CUDA-enabled torch/torchvision FIRST (or use an env that has it),
+# e.g. the Vast PyTorch venv. These are the additional deps:
+kaggle==1.6.17
+pillow==11.0.0
+opencv-python-headless==4.10.0.84
+imagehash==4.3.1
+numpy==1.26.4
+minio==7.2.15
+transformers==4.48.0
+accelerate==1.2.1
+groq==0.13.1
+# For step 7 (LoRA training) the diffusers example also needs:
+#   peft, datasets, safetensors  -> installed by 07_train_lora.sh
