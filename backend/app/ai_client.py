@@ -60,3 +60,16 @@ async def ping() -> bool:
         return resp.status_code == 200
     except httpx.HTTPError:
         return False
+
+
+async def status() -> dict:
+    """Return the ai-service health dict (ready, lora_loaded, ...), or {} on error."""
+    url = f"{settings.ai_service_url.rstrip('/')}/health"
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(url)
+        if resp.status_code == 200:
+            return resp.json()
+    except (httpx.HTTPError, ValueError):
+        pass
+    return {}

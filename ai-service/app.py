@@ -1,8 +1,11 @@
 """FastAPI wrapper around the SDXL + LoRA pipeline.
 
 Contract with the backend:
-    POST /generate   JSON GenerateReq  ->  image/png bytes
-    GET  /health     -> {status, model, device, lora_loaded, ready}
+    POST /generate        JSON GenerateReq  -> image/png bytes
+    POST /v1/reload-lora   -> re-pull the LoRA from MinIO and hot-swap it
+    GET  /health           -> {status, model, device, lora_loaded, ...}
+    GET  /health/live      -> liveness (process up)
+    GET  /health/ready     -> readiness (model loaded)
 """
 from __future__ import annotations
 
@@ -16,7 +19,9 @@ from pydantic import BaseModel, Field
 
 from pipeline import SDXLPipeline
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+)
 logger = logging.getLogger("ai-service")
 
 sdxl = SDXLPipeline()
@@ -40,20 +45,41 @@ class GenerateReq(BaseModel):
     steps: int = Field(default=30, ge=1, le=100)
     guidance_scale: float = Field(default=7.5, ge=1.0, le=20.0)
     seed: int = Field(default=0, ge=0)
+    lora_scale: float | None = Field(default=None, ge=0.0, le=2.0)
 
 
-@app.get("/health")
-def health() -> dict:
+def _health_dict() -> dict:
     return {
         "status": "ok" if sdxl.is_ready() else "loading",
         "ready": sdxl.is_ready(),
         "model": sdxl.model_id,
+        "vae": sdxl.vae_id,
         "device": "cuda" if (sdxl.device == "cuda" and torch.cuda.is_available()) else "cpu",
         "lora_loaded": sdxl.lora_loaded,
+        "lora_source": sdxl.lora_source,
+        "lora_scale": sdxl.lora_scale,
+        "error": sdxl._load_error,
     }
 
 
-@app.post("/generate")
+@app.get("/health/live", tags=["health"])
+def live() -> dict:
+    return {"status": "alive"}
+
+
+@app.get("/health/ready", tags=["health"])
+def ready() -> dict:
+    if not sdxl.is_ready():
+        raise HTTPException(status_code=503, detail=_health_dict())
+    return _health_dict()
+
+
+@app.get("/health", tags=["health"])
+def health() -> dict:
+    return _health_dict()
+
+
+@app.post("/generate", tags=["generate"])
 async def generate(req: GenerateReq) -> Response:
     if not sdxl.is_ready():
         raise HTTPException(status_code=503, detail="Model still loading")
@@ -67,6 +93,7 @@ async def generate(req: GenerateReq) -> Response:
             steps=req.steps,
             guidance_scale=req.guidance_scale,
             seed=req.seed,
+            lora_scale=req.lora_scale,
         )
     except torch.cuda.OutOfMemoryError as exc:  # type: ignore[attr-defined]
         torch.cuda.empty_cache()
@@ -79,6 +106,18 @@ async def generate(req: GenerateReq) -> Response:
     return Response(content=png, media_type="image/png")
 
 
-@app.get("/")
+@app.post("/v1/reload-lora", tags=["lora"])
+async def reload_lora() -> dict:
+    """Re-pull the LoRA adapter from MinIO and hot-swap it into the pipeline."""
+    if not sdxl.is_ready():
+        raise HTTPException(status_code=503, detail="Model still loading")
+    loaded = await run_in_threadpool(sdxl.reload_lora)
+    return {"lora_loaded": loaded, "lora_source": sdxl.lora_source}
+
+
+@app.get("/", tags=["health"])
 def root() -> dict:
-    return {"service": "ai-service", "endpoints": ["/generate", "/health"]}
+    return {
+        "service": "ai-service",
+        "endpoints": ["/generate", "/v1/reload-lora", "/health", "/health/ready"],
+    }

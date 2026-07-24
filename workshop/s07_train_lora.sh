@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# =============================================================================
+# Stage 07 — Fine-tune an SDXL LoRA on the prepared living-room dataset.
+#
+# Uses the official diffusers example train_text_to_image_lora_sdxl.py against
+# data/lora_dataset/ (imagefolder + metadata.jsonl, caption column "text").
+#
+# Requirements: a CUDA GPU with >= ~16 GB VRAM (24 GB comfortable at 1024).
+#
+#   bash s07_train_lora.sh
+# =============================================================================
+set -euo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$HERE/.." && pwd)"
+
+# ---- Config (override via env) ----
+MODEL="${SDXL_MODEL_ID:-stabilityai/stable-diffusion-xl-base-1.0}"
+VAE="${SDXL_VAE_ID:-madebyollin/sdxl-vae-fp16-fix}"
+DATA_DIR="${WORKSHOP_DATA:-$REPO_ROOT/data}/lora_dataset"
+OUTPUT_DIR="${OUTPUT_DIR:-$HERE/output/${LORA_NAME:-living-room-style-v1}}"
+RESOLUTION="${TRAIN_RESOLUTION:-1024}"
+RANK="${LORA_RANK:-16}"
+MAX_STEPS="${MAX_TRAIN_STEPS:-1000}"
+LR="${LEARNING_RATE:-1e-4}"
+BATCH="${TRAIN_BATCH_SIZE:-1}"
+GRAD_ACCUM="${GRAD_ACCUM:-4}"
+SEED="${TRAIN_SEED:-42}"
+CKPT_STEPS="${CHECKPOINTING_STEPS:-500}"
+
+PYBIN="${PYBIN:-python}"
+DIFFUSERS_DIR="${DIFFUSERS_DIR:-$REPO_ROOT/.runtime/diffusers}"
+TRAIN_SCRIPT="$DIFFUSERS_DIR/examples/text_to_image/train_text_to_image_lora_sdxl.py"
+
+# ---- Fetch the training script (pinned) ----
+if [ ! -f "$TRAIN_SCRIPT" ]; then
+  echo "[train] cloning diffusers into $DIFFUSERS_DIR"
+  git clone --depth 1 --branch v0.36.0 https://github.com/huggingface/diffusers "$DIFFUSERS_DIR" \
+    || git clone --depth 1 https://github.com/huggingface/diffusers "$DIFFUSERS_DIR"
+fi
+
+if [ ! -f "$DATA_DIR/metadata.jsonl" ]; then
+  echo "[train] ERROR: $DATA_DIR/metadata.jsonl not found. Run s06_build_dataset.py first." >&2
+  exit 1
+fi
+
+mkdir -p "$OUTPUT_DIR"
+N=$(wc -l < "$DATA_DIR/metadata.jsonl")
+echo "[train] model=$MODEL  images=$N  res=$RESOLUTION  steps=$MAX_STEPS  rank=$RANK  out=$OUTPUT_DIR"
+
+# ---- accelerate default config (single GPU, fp16) if none present ----
+export ACCELERATE_MIXED_PRECISION="fp16"
+
+accelerate launch --num_processes=1 --mixed_precision=fp16 "$TRAIN_SCRIPT" \
+  --pretrained_model_name_or_path="$MODEL" \
+  --pretrained_vae_model_name_or_path="$VAE" \
+  --train_data_dir="$DATA_DIR" \
+  --caption_column="text" \
+  --resolution="$RESOLUTION" --center_crop --random_flip \
+  --train_batch_size="$BATCH" \
+  --gradient_accumulation_steps="$GRAD_ACCUM" \
+  --gradient_checkpointing \
+  --max_train_steps="$MAX_STEPS" \
+  --learning_rate="$LR" \
+  --lr_scheduler="constant" --lr_warmup_steps=0 \
+  --mixed_precision="fp16" \
+  --rank="$RANK" \
+  --seed="$SEED" \
+  --checkpointing_steps="$CKPT_STEPS" \
+  --enable_xformers_memory_efficient_attention 2>/dev/null \
+  --dataloader_num_workers=4 \
+  --output_dir="$OUTPUT_DIR" \
+  || accelerate launch --num_processes=1 --mixed_precision=fp16 "$TRAIN_SCRIPT" \
+  --pretrained_model_name_or_path="$MODEL" \
+  --pretrained_vae_model_name_or_path="$VAE" \
+  --train_data_dir="$DATA_DIR" \
+  --caption_column="text" \
+  --resolution="$RESOLUTION" --center_crop --random_flip \
+  --train_batch_size="$BATCH" \
+  --gradient_accumulation_steps="$GRAD_ACCUM" \
+  --gradient_checkpointing \
+  --max_train_steps="$MAX_STEPS" \
+  --learning_rate="$LR" \
+  --lr_scheduler="constant" --lr_warmup_steps=0 \
+  --mixed_precision="fp16" \
+  --rank="$RANK" \
+  --seed="$SEED" \
+  --checkpointing_steps="$CKPT_STEPS" \
+  --dataloader_num_workers=4 \
+  --output_dir="$OUTPUT_DIR"
+
+echo "[train] done. LoRA weights: $OUTPUT_DIR/pytorch_lora_weights.safetensors"
+echo "[train] next: python s08_publish_lora.py"

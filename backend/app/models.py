@@ -33,6 +33,11 @@ class Generation(Base):
     guidance_scale: Mapped[float] = mapped_column(Float)
     seed: Mapped[int] = mapped_column(Integer)  # resolved seed actually used
 
+    # Provenance
+    enhance_method: Mapped[str] = mapped_column(String(32), default="local")  # llm|local|local-fallback
+    lora_scale: Mapped[float] = mapped_column(Float, default=0.0)
+    generation_ms: Mapped[int] = mapped_column(Integer, default=0)
+
     # Storage
     object_name: Mapped[str] = mapped_column(String(255))  # key in MinIO bucket
 
@@ -50,6 +55,9 @@ class Generation(Base):
             "steps": self.steps,
             "guidance_scale": self.guidance_scale,
             "seed": self.seed,
+            "enhance_method": self.enhance_method,
+            "lora_scale": self.lora_scale,
+            "generation_ms": self.generation_ms,
             "object_name": self.object_name,
             "image_url": f"/api/images/{self.id}",
             "created_at": self.created_at,

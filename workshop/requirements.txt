@@ -1,0 +1,22 @@
+# Workshop / training pipeline dependencies.
+# torch / torchvision come from the CUDA base image (see Dockerfile).
+diffusers==0.36.0
+transformers==4.57.1
+accelerate==1.10.1
+peft==0.17.1
+safetensors==0.6.2
+datasets==4.0.0
+huggingface-hub==0.35.3
+
+# Data cleaning + upscaling
+pillow==11.3.0
+opencv-python-headless==4.11.0.86
+imagehash==4.3.2
+spandrel==0.4.2          # Real-ESRGAN loader (no basicsr dependency)
+numpy==2.2.6
+
+# Storage + service calls
+minio==7.2.15
+httpx==0.28.1
+pandas==2.3.3
+tqdm==4.67.1

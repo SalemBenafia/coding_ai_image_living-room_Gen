@@ -15,23 +15,30 @@ __pycache__/
 .venv/
 venv/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .ipynb_checkpoints/
 
-# ---- Models & data (large / regenerable) ----
-data/raw/
-data/prepared/
-data/lora_dataset/
-training/output/
+# ---- Models & data (large / regenerable; live in MinIO) ----
+data/
+datasets/
+models/
+hf_cache/
+.hf_home/
+workshop/output/
 *.safetensors
 *.ckpt
 *.pt
+*.pth
 *.bin
-hf_cache/
-.hf_home/
+*.zip
 
-# ---- Runtime state ----
+# ---- Runtime state (native launcher) ----
+.runtime/
 scripts/.bin/
+minio-data/
 minio_data/
+postgres-data/
 backend_data/
 *.sqlite3
 *.db

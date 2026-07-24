@@ -1,121 +1,262 @@
-# =========================================================================
-#  AI Living Room Generator — full stack
-#  Start everything:   docker compose up -d --build
-#  Logs:               docker compose logs -f backend ai-service
-#  Stop:               docker compose down
-# =========================================================================
+# =============================================================================
+# Living Room AI - full stack
+#
+#   docker compose up -d --build          # start the app (frontend/backend/AI/minio/db)
+#   docker compose logs -f backend ai-service
+#   docker compose --profile workshop run --rm workshop make all   # train the LoRA
+#   docker compose down
+#
+# Services
+#   frontend        nginx serving static HTML/CSS/JS + reverse proxy to backend
+#   backend         FastAPI (Pydantic validation, SQLAlchemy ORM) - no GPU
+#   ai-service      Stable Diffusion XL + Diffusers + LoRA           - GPU
+#   llm-service     Qwen 2.5 1.5B Instruct (prompt enhancement)      - GPU
+#   caption-service BLIP image captioning (workshop pipeline)        - GPU
+#   minio           S3-compatible object storage
+#   postgres        relational store behind SQLAlchemy
+#   workshop        training pipeline (profile: workshop, run on demand)   - GPU
+# =============================================================================
+
+x-gpu: &gpu
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
+
 services:
 
-  # ---- Object storage -------------------------------------------------
+  # ---------------------------------------------------------------- storage --
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    container_name: lr-minio
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change-me-please-123}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-password123}
     volumes:
       - minio_data:/data
     ports:
-      - "9000:9000"   # S3 API
-      - "9001:9001"   # Web console
+      - "${MINIO_API_HOST_PORT:-9000}:9000"       # S3 API
+      - "${MINIO_CONSOLE_HOST_PORT:-9001}:9001"    # Web console
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 12
       start_period: 10s
     restart: unless-stopped
     networks: [appnet]
 
-  # ---- AI service: SDXL + LoRA (needs GPU) ----------------------------
+  # Create the buckets once MinIO is healthy, then exit.
+  minio-init:
+    image: minio/mc:RELEASE.2025-04-08T15-39-49Z
+    container_name: lr-minio-init
+    depends_on:
+      minio: {condition: service_healthy}
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-password123}
+      MINIO_BUCKET_DATA: ${MINIO_BUCKET_DATA:-interior-design-data}
+      MINIO_BUCKET_IMAGES: ${MINIO_BUCKET_IMAGES:-generated-images}
+      MINIO_BUCKET_MODELS: ${MINIO_BUCKET_MODELS:-models}
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD &&
+      mc mb -p local/$$MINIO_BUCKET_DATA local/$$MINIO_BUCKET_IMAGES local/$$MINIO_BUCKET_MODELS &&
+      echo 'buckets ready'
+      "
+    networks: [appnet]
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: lr-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-livingroom}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-livingroom_pw}
+      POSTGRES_DB: ${POSTGRES_DB:-livingroom}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-livingroom} -d ${POSTGRES_DB:-livingroom}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+    networks: [appnet]
+
+  # ------------------------------------------------------------ ai services --
   ai-service:
     build: ./ai-service
+    container_name: lr-ai-service
+    <<: *gpu
     environment:
+      SDXL_MODEL_ID: ${SDXL_MODEL_ID:-stabilityai/stable-diffusion-xl-base-1.0}
+      SDXL_VAE_ID: ${SDXL_VAE_ID:-madebyollin/sdxl-vae-fp16-fix}
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change-me-please-123}
-      MINIO_SECURE: ${MINIO_SECURE:-false}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-password123}
       MINIO_BUCKET_MODELS: ${MINIO_BUCKET_MODELS:-models}
-      SDXL_MODEL_ID: ${SDXL_MODEL_ID:-stabilityai/stable-diffusion-xl-base-1.0}
-      LORA_OBJECT: ${LORA_OBJECT:-}
+      LORA_OBJECT_KEY: ${LORA_OBJECT_KEY:-models/living-room-style-v1/pytorch_lora_weights.safetensors}
       LORA_SCALE: ${LORA_SCALE:-0.8}
-      AI_DEVICE: ${AI_DEVICE:-cuda}
-      MAX_STEPS: ${MAX_STEPS:-60}
-      MAX_SIDE: ${MAX_SIDE:-1536}
-      HF_HOME: ${HF_HOME:-/models/hf_cache}
+      LORA_AUTOLOAD: ${LORA_AUTOLOAD:-true}
+      AI_DEVICE: cuda
+      HF_HOME: /hf_cache
     volumes:
-      - hf_cache:/models/hf_cache
+      - hf_cache:/hf_cache
     ports:
-      - "8100:8100"
+      - "${AI_HOST_PORT:-8100}:8100"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8100/health').status==200 else 1)"]
-      interval: 20s
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8100/health/live',timeout=5).status==200 else 1)"]
+      interval: 15s
       timeout: 10s
-      retries: 10
-      start_period: 120s   # model load can take a while on first boot
+      retries: 40
+      start_period: 180s
     depends_on:
-      minio:
-        condition: service_healthy
-    # ---- GPU access (NVIDIA Container Toolkit required on host) ----
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+      minio: {condition: service_healthy}
     restart: unless-stopped
     networks: [appnet]
 
-  # ---- Backend API (FastAPI) -----------------------------------------
+  llm-service:
+    build: ./llm-service
+    container_name: lr-llm-service
+    <<: *gpu
+    environment:
+      LLM_MODEL_ID: ${LLM_MODEL_ID:-Qwen/Qwen2.5-1.5B-Instruct}
+      HF_HOME: /hf_cache
+    volumes:
+      - hf_cache:/hf_cache
+    ports:
+      - "${LLM_HOST_PORT:-8200}:8200"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8200/health/live',timeout=5).status==200 else 1)"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 90s
+    restart: unless-stopped
+    networks: [appnet]
+
+  caption-service:
+    build: ./caption-service
+    container_name: lr-caption-service
+    <<: *gpu
+    environment:
+      BLIP_MODEL_ID: ${BLIP_MODEL_ID:-Salesforce/blip-image-captioning-large}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-password123}
+      MINIO_BUCKET_DATA: ${MINIO_BUCKET_DATA:-interior-design-data}
+      HF_HOME: /hf_cache
+    volumes:
+      - hf_cache:/hf_cache
+    ports:
+      - "${CAPTION_HOST_PORT:-8300}:8300"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8300/health/live',timeout=5).status==200 else 1)"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 90s
+    depends_on:
+      minio: {condition: service_healthy}
+    restart: unless-stopped
+    networks: [appnet]
+
+  # --------------------------------------------------------------- backend ---
   backend:
     build: ./backend
+    container_name: lr-backend
     environment:
-      DATABASE_URL: ${DATABASE_URL:-sqlite:////data/app.db}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://livingroom:livingroom_pw@postgres:5432/livingroom}
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change-me-please-123}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-password123}
       MINIO_SECURE: ${MINIO_SECURE:-false}
-      MINIO_BUCKET_GENERATED: ${MINIO_BUCKET_GENERATED:-generated-images}
+      MINIO_BUCKET_IMAGES: ${MINIO_BUCKET_IMAGES:-generated-images}
+      MINIO_BUCKET_MODELS: ${MINIO_BUCKET_MODELS:-models}
+      MINIO_BUCKET_DATA: ${MINIO_BUCKET_DATA:-interior-design-data}
       AI_SERVICE_URL: ${AI_SERVICE_URL:-http://ai-service:8100}
+      LLM_SERVICE_URL: ${LLM_SERVICE_URL:-http://llm-service:8200}
+      CAPTION_SERVICE_URL: ${CAPTION_SERVICE_URL:-http://caption-service:8300}
+      PROMPT_ENHANCER: ${PROMPT_ENHANCER:-llm}
       MAX_PROMPT_LENGTH: ${MAX_PROMPT_LENGTH:-1000}
-      PROMPT_ENHANCER: ${PROMPT_ENHANCER:-local}
-      GROQ_API_KEY: ${GROQ_API_KEY:-}
-      GROQ_MODEL: ${GROQ_MODEL:-qwen-2.5-32b}
-      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://localhost:8080}
-    volumes:
-      - backend_data:/data
+      DEFAULT_STEPS: ${DEFAULT_STEPS:-30}
+      DEFAULT_GUIDANCE_SCALE: ${DEFAULT_GUIDANCE_SCALE:-7.5}
+      LORA_SCALE: ${LORA_SCALE:-0.8}
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-*}
     ports:
-      - "8000:8000"
+      - "${BACKEND_HOST_PORT:-8000}:8000"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"]
-      interval: 15s
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/health/live',timeout=5).status==200 else 1)"]
+      interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 15s
+      retries: 20
+      start_period: 20s
     depends_on:
-      minio:
-        condition: service_healthy
-      ai-service:
-        condition: service_started
+      postgres: {condition: service_healthy}
+      minio: {condition: service_healthy}
+      ai-service: {condition: service_started}
+      llm-service: {condition: service_started}
     restart: unless-stopped
     networks: [appnet]
 
-  # ---- Frontend (static site via nginx) ------------------------------
+  # -------------------------------------------------------------- frontend ---
   frontend:
     build: ./frontend
+    container_name: lr-frontend
     ports:
-      - "8080:80"
+      - "${FRONTEND_HOST_PORT:-8080}:8080"
     depends_on:
-      backend:
-        condition: service_started
+      backend: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     restart: unless-stopped
+    networks: [appnet]
+
+  # -------------------------------------------------------------- workshop ---
+  # Training / data pipeline. Not started by default:
+  #   docker compose --profile workshop run --rm workshop make all
+  workshop:
+    build: ./workshop
+    container_name: lr-workshop
+    profiles: [workshop]
+    <<: *gpu
+    environment:
+      KAGGLE_API_TOKEN: ${KAGGLE_API_TOKEN:-}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-password123}
+      MINIO_BUCKET_DATA: ${MINIO_BUCKET_DATA:-interior-design-data}
+      MINIO_BUCKET_MODELS: ${MINIO_BUCKET_MODELS:-models}
+      CAPTION_SERVICE_URL: ${CAPTION_SERVICE_URL:-http://caption-service:8300}
+      LLM_SERVICE_URL: ${LLM_SERVICE_URL:-http://llm-service:8200}
+      AI_SERVICE_URL: ${AI_SERVICE_URL:-http://ai-service:8100}
+      SDXL_MODEL_ID: ${SDXL_MODEL_ID:-stabilityai/stable-diffusion-xl-base-1.0}
+      SDXL_VAE_ID: ${SDXL_VAE_ID:-madebyollin/sdxl-vae-fp16-fix}
+      LORA_NAME: ${LORA_NAME:-living-room-style-v1}
+      TRAIN_RESOLUTION: ${TRAIN_RESOLUTION:-1024}
+      MAX_TRAIN_STEPS: ${MAX_TRAIN_STEPS:-1000}
+      LORA_RANK: ${LORA_RANK:-16}
+      HF_HOME: /hf_cache
+    volumes:
+      - hf_cache:/hf_cache
+      - workshop_data:/data
+    depends_on:
+      minio: {condition: service_healthy}
     networks: [appnet]
 
 volumes:
   minio_data:
-  backend_data:
+  postgres_data:
   hf_cache:
+  workshop_data:
 
 networks:
   appnet:

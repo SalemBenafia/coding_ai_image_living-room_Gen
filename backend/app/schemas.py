@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from better_profanity import profanity
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .config import get_settings
@@ -10,17 +11,23 @@ from .styles import STYLE_PRESETS
 
 settings = get_settings()
 
-# Minimal safety filter. Interior-design app: reject obviously unsafe/offensive
-# requests. This is a lightweight guard, not a full moderation system.
+profanity.load_censor_words()
+
+# Safety filter. Interior-design app: reject obviously unsafe/offensive requests.
+# Two layers: an explicit block-list of unsafe topics, plus better-profanity for
+# general offensive language. This is a pragmatic guard, not full moderation.
 _BLOCKED_TERMS = {
     "nude", "naked", "nsfw", "porn", "sex", "gore", "blood", "corpse",
-    "weapon", "gun", "knife attack", "child", "kill", "suicide",
+    "weapon", "gun", "knife attack", "child", "kill", "suicide", "terror",
 }
 
 
 def find_unsafe_terms(text: str) -> list[str]:
     low = text.lower()
-    return sorted({t for t in _BLOCKED_TERMS if t in low})
+    hits = {t for t in _BLOCKED_TERMS if t in low}
+    if profanity.contains_profanity(text):
+        hits.add("offensive language")
+    return sorted(hits)
 
 
 class GenerateRequest(BaseModel):
@@ -96,6 +103,9 @@ class GenerationOut(BaseModel):
     steps: int
     guidance_scale: float
     seed: int
+    enhance_method: str
+    lora_scale: float
+    generation_ms: int
     object_name: str
     image_url: str
     created_at: datetime
@@ -118,4 +128,7 @@ class HealthOut(BaseModel):
     status: str
     minio: bool
     ai_service: bool
+    llm_service: bool
     enhancer: str
+    lora_loaded: bool | None = None
+    lora_scale: float | None = None

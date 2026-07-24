@@ -1,0 +1,15 @@
+# Torch wheels bundle their own CUDA runtime, so no system CUDA toolkit is needed.
+# cu126 covers compute capability 8.0-9.0 (A100/A5000/L4/H100). For Blackwell
+# (cc >= 10.0) switch the index in the Dockerfile to cu128 or newer.
+--extra-index-url https://download.pytorch.org/whl/cu126
+torch==2.6.0+cu126
+
+transformers==4.57.1
+accelerate==1.10.1
+sentencepiece==0.2.0
+protobuf==6.32.1
+safetensors==0.6.2
+
+fastapi==0.118.0
+uvicorn[standard]==0.37.0
+pydantic==2.11.9

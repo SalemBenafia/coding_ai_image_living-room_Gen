@@ -21,7 +21,7 @@ class Storage:
             secret_key=settings.minio_root_password,
             secure=settings.minio_secure,
         )
-        self.bucket = settings.minio_bucket_generated
+        self.bucket = settings.minio_bucket_images
 
     def ensure_bucket(self) -> None:
         if not self.client.bucket_exists(self.bucket):

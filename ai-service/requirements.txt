@@ -1,10 +1,12 @@
-# torch / torchvision come from the CUDA base image (see Dockerfile) — do not pin here.
-diffusers==0.32.2
-transformers==4.48.0
-accelerate==1.2.1
-peft==0.14.0
-safetensors==0.4.5
+# torch / torchvision come from the CUDA base image (see Dockerfile) — not pinned here.
+diffusers==0.36.0
+transformers==4.57.1
+accelerate==1.10.1
+peft==0.17.1
+safetensors==0.6.2
+huggingface-hub==0.35.3
 minio==7.2.15
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-pillow==11.0.0
+fastapi==0.118.0
+uvicorn[standard]==0.37.0
+pydantic==2.11.9
+pillow==11.3.0

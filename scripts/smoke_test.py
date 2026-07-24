@@ -34,7 +34,7 @@ def wait_for_health(timeout: float = 60.0) -> None:
     start = time.time()
     while time.time() - start < timeout:
         try:
-            r = httpx.get(f"{BACKEND}/health", timeout=5)
+            r = httpx.get(f"{BACKEND}/api/health", timeout=5)
             if r.status_code == 200:
                 print(f"backend health: {r.json()}")
                 return
@@ -70,6 +70,9 @@ def main() -> int:
         check("seed echoed (reproducible)", data.get("seed") == 123, f"seed={data.get('seed')}")
         check("enhanced_prompt built", "living room" in (data.get("enhanced_prompt") or "").lower())
         check("negative_prompt built", "low quality" in (data.get("negative_prompt") or "").lower())
+        check("enhance_method recorded", data.get("enhance_method") in {"llm", "local", "local-fallback"},
+              f"method={data.get('enhance_method')}")
+        check("generation timed", (data.get("generation_ms") or 0) > 0)
         check("image_url points to backend proxy", (data.get("image_url") or "").startswith("/api/images/"))
 
         # fetch image

@@ -52,11 +52,12 @@ async function checkHealth() {
   const dot = $("status-dot");
   const text = $("status-text");
   try {
-    const h = await apiGet("/health");
+    const h = await apiGet("/api/health");
     const ok = h.status === "ok";
     dot.className = "dot " + (ok ? "ok" : "bad");
+    const lora = h.lora_loaded ? "LoRA on" : "base SDXL";
     text.textContent = ok
-      ? `ready · ${h.enhancer}`
+      ? `ready · ${h.enhancer} · ${lora}`
       : `degraded (minio:${h.minio ? "up" : "down"}, ai:${h.ai_service ? "up" : "down"})`;
   } catch {
     dot.className = "dot bad";
@@ -143,10 +144,16 @@ function renderResult(item) {
 }
 
 function metaHtml(item) {
+  const secs = item.generation_ms ? (item.generation_ms / 1000).toFixed(1) + "s" : "";
+  const method = item.enhance_method
+    ? { llm: "Qwen 2.5", "local-fallback": "rule-based (fallback)", local: "rule-based" }[
+        item.enhance_method
+      ] || item.enhance_method
+    : "";
   return `
     <div><b>Prompt:</b> ${escapeHtml(item.enhanced_prompt)}</div>
-    <div><b>Style:</b> ${item.style || "none"} &nbsp; <b>Seed:</b> ${item.seed}</div>
-    <div><b>Size:</b> ${item.width}×${item.height} &nbsp; <b>Steps:</b> ${item.steps} &nbsp; <b>CFG:</b> ${item.guidance_scale}</div>`;
+    <div><b>Style:</b> ${item.style || "none"} &nbsp; <b>Seed:</b> ${item.seed} &nbsp; <b>Enhanced by:</b> ${method}</div>
+    <div><b>Size:</b> ${item.width}×${item.height} &nbsp; <b>Steps:</b> ${item.steps} &nbsp; <b>CFG:</b> ${item.guidance_scale} &nbsp; <b>Time:</b> ${secs}</div>`;
 }
 
 function reuseSettings() {
