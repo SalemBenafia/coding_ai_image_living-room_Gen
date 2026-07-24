@@ -103,6 +103,7 @@ services:
       LORA_OBJECT_KEY: ${LORA_OBJECT_KEY:-models/living-room-style-v1/pytorch_lora_weights.safetensors}
       LORA_SCALE: ${LORA_SCALE:-0.8}
       LORA_AUTOLOAD: ${LORA_AUTOLOAD:-true}
+      LORA_TRIGGER: ${LORA_TRIGGER:-lvngrm living room}
       AI_DEVICE: cuda
       HF_HOME: /hf_cache
     volumes:

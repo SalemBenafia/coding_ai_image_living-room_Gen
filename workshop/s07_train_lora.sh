@@ -48,7 +48,8 @@ mkdir -p "$OUTPUT_DIR"
 N=$(wc -l < "$DATA_DIR/metadata.jsonl")
 echo "[train] model=$MODEL  images=$N  res=$RESOLUTION  steps=$MAX_STEPS  rank=$RANK  out=$OUTPUT_DIR"
 
-# ---- accelerate default config (single GPU, fp16) if none present ----
+# ---- single-GPU fp16 launch. SDXL uses PyTorch SDPA attention by default, so no
+#      xformers is required. SNR gamma weighting speeds up convergence. ----
 export ACCELERATE_MIXED_PRECISION="fp16"
 
 accelerate launch --num_processes=1 --mixed_precision=fp16 "$TRAIN_SCRIPT" \
@@ -62,25 +63,7 @@ accelerate launch --num_processes=1 --mixed_precision=fp16 "$TRAIN_SCRIPT" \
   --gradient_checkpointing \
   --max_train_steps="$MAX_STEPS" \
   --learning_rate="$LR" \
-  --lr_scheduler="constant" --lr_warmup_steps=0 \
-  --mixed_precision="fp16" \
-  --rank="$RANK" \
-  --seed="$SEED" \
-  --checkpointing_steps="$CKPT_STEPS" \
-  --enable_xformers_memory_efficient_attention 2>/dev/null \
-  --dataloader_num_workers=4 \
-  --output_dir="$OUTPUT_DIR" \
-  || accelerate launch --num_processes=1 --mixed_precision=fp16 "$TRAIN_SCRIPT" \
-  --pretrained_model_name_or_path="$MODEL" \
-  --pretrained_vae_model_name_or_path="$VAE" \
-  --train_data_dir="$DATA_DIR" \
-  --caption_column="text" \
-  --resolution="$RESOLUTION" --center_crop --random_flip \
-  --train_batch_size="$BATCH" \
-  --gradient_accumulation_steps="$GRAD_ACCUM" \
-  --gradient_checkpointing \
-  --max_train_steps="$MAX_STEPS" \
-  --learning_rate="$LR" \
+  --snr_gamma=5.0 \
   --lr_scheduler="constant" --lr_warmup_steps=0 \
   --mixed_precision="fp16" \
   --rank="$RANK" \

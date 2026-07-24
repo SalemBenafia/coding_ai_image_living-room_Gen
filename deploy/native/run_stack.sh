@@ -56,6 +56,7 @@ export LORA_NAME="${LORA_NAME:-living-room-style-v1}"
 export LORA_OBJECT_KEY="${LORA_OBJECT_KEY:-models/living-room-style-v1/pytorch_lora_weights.safetensors}"
 export LORA_SCALE="${LORA_SCALE:-0.8}"
 export LORA_AUTOLOAD="${LORA_AUTOLOAD:-true}"
+export LORA_TRIGGER="${LORA_TRIGGER:-lvngrm living room}"
 
 export BACKEND_CORS_ORIGINS="${BACKEND_CORS_ORIGINS:-*}"
 

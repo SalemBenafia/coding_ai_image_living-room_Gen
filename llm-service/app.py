@@ -133,15 +133,25 @@ def clean_single_line(text: str) -> str:
     text = re.sub(r"\s+", " ", text)
     text = re.sub(r"\s*,\s*", ", ", text)
     text = re.sub(r"(,\s*){2,}", ", ", text).strip(" ,")
-    # Drop duplicate comma-separated phrases, preserving order.
+    # Drop duplicate comma-separated phrases, preserving order, and guard against
+    # the small model's occasional runaway repetition (SEO-style loops): stop
+    # once we have enough phrases or hit near-duplicate spam.
     seen: set[str] = set()
     parts: list[str] = []
     for part in text.split(","):
         p = part.strip()
         k = p.lower()
-        if p and k not in seen:
-            seen.add(k)
-            parts.append(p)
+        if not p or k in seen:
+            continue
+        # Heuristic: too many phrases sharing the same head word ("bedroom decor
+        # X, bedroom decor Y, ...") is a loop — stop adding.
+        head = k.split()[0] if k.split() else ""
+        if head and sum(1 for q in parts if q.lower().startswith(head + " ")) >= 4:
+            continue
+        seen.add(k)
+        parts.append(p)
+        if len(parts) >= 28:  # a rich SDXL caption never needs more
+            break
     return ", ".join(parts)
 
 

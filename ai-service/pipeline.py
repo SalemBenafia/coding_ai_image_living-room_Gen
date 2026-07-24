@@ -43,6 +43,10 @@ class SDXLPipeline:
         self.lora_scale = float(os.environ.get("LORA_SCALE", "0.8"))
         self.lora_autoload = os.environ.get("LORA_AUTOLOAD", "true").lower() == "true"
         self.lora_adapter_name = "living_room"
+        # Activation phrase the LoRA was trained with. When the adapter is loaded
+        # we prepend it so the learned living-room style reliably activates, even
+        # though end users never type it.
+        self.lora_trigger = os.environ.get("LORA_TRIGGER", "lvngrm living room").strip()
 
         self.max_steps = int(os.environ.get("MAX_STEPS", "60"))
         self.max_side = int(os.environ.get("MAX_SIDE", "1536"))
@@ -179,6 +183,9 @@ class SDXLPipeline:
         kwargs: dict = {}
         if self.lora_loaded:
             kwargs["cross_attention_kwargs"] = {"scale": scale}
+            # Prepend the trigger phrase (once) so the LoRA style activates.
+            if self.lora_trigger and self.lora_trigger.lower() not in prompt.lower():
+                prompt = f"{self.lora_trigger}, {prompt}"
 
         with self._lock:  # one generation at a time on the GPU
             result = self.pipe(
