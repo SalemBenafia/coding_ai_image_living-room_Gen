@@ -162,6 +162,12 @@ See **[workshop/README.md](workshop/README.md)** for the full guide, including h
 both Kaggle interior datasets are combined and why upscaling is necessary (the
 source images are web thumbnails).
 
+`make report` (stage `s09`) produces an EDA figure of the training corpus — style
+balance, per-source contribution, caption lengths, and the BLIP room-type filter's
+keep/drop breakdown:
+
+![Dataset report](docs/dataset_report.png)
+
 ---
 
 ## Repository layout

@@ -57,6 +57,9 @@ train:
 publish:
 	$(PY) s08_publish_lora.py
 
+report:
+	$(PY) s09_dataset_report.py
+
 clean:
 	rm -rf $(WORKSHOP_DATA)/prepared $(WORKSHOP_DATA)/upscaled \
 	       $(WORKSHOP_DATA)/lora_dataset $(WORKSHOP_DATA)/*.csv output
