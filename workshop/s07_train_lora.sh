@@ -62,6 +62,7 @@ if [ -n "${SDXL_VAE_ID:-}" ] && [ "${SDXL_USE_EXPLICIT_VAE:-0}" = "1" ]; then
   VAE_ARG=(--pretrained_vae_model_name_or_path="$VAE")
 fi
 
+set +e
 accelerate launch --num_processes=1 --mixed_precision=fp16 "$TRAIN_SCRIPT" \
   --pretrained_model_name_or_path="$MODEL" \
   "${VAE_ARG[@]}" \
@@ -82,6 +83,17 @@ accelerate launch --num_processes=1 --mixed_precision=fp16 "$TRAIN_SCRIPT" \
   --checkpointing_steps="$CKPT_STEPS" \
   --dataloader_num_workers=4 \
   --output_dir="$OUTPUT_DIR"
+rc=$?
+set -e
 
-echo "[train] done. LoRA weights: $OUTPUT_DIR/pytorch_lora_weights.safetensors"
-echo "[train] next: python s08_publish_lora.py"
+WEIGHTS="$OUTPUT_DIR/pytorch_lora_weights.safetensors"
+# The trainer runs a final validation-inference pass AFTER saving the weights;
+# in offline mode that pass can raise (it tries to auto-guess the weight name).
+# Treat the run as successful as long as the weights file was actually written.
+if [ -f "$WEIGHTS" ]; then
+  echo "[train] done. LoRA weights: $WEIGHTS"
+  echo "[train] next: python s08_publish_lora.py"
+  exit 0
+fi
+echo "[train] ERROR: training exited $rc and no weights were saved." >&2
+exit "${rc:-1}"

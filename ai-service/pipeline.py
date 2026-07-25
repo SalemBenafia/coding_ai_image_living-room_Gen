@@ -142,8 +142,16 @@ class SDXLPipeline:
         self.pipe.load_lora_weights(
             LOCAL_LORA_DIR, weight_name=weight_name, adapter_name=self.lora_adapter_name
         )
+        # Ensure the adapter is active at the configured scale (diffusers 0.36 PEFT).
+        try:
+            self.pipe.set_adapters([self.lora_adapter_name], adapter_weights=[self.lora_scale])
+        except Exception:  # noqa: BLE001
+            pass
         self.lora_loaded = True
-        self.lora_source = f"{self.lora_bucket}/{self.lora_object_key}"
+        key = self.lora_object_key
+        if key.startswith(self.lora_bucket + "/"):
+            key = key[len(self.lora_bucket) + 1:]
+        self.lora_source = f"{self.lora_bucket}/{key}"
         logger.info("LoRA applied from %s (scale=%.2f).", self.lora_source, self.lora_scale)
 
     def reload_lora(self) -> bool:

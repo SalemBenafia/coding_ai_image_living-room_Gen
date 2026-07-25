@@ -16,6 +16,17 @@ Everything runs **locally on your own GPU** — no third-party inference APIs
 (no Groq, no OpenAI). The LLM, the captioner, and the image model are all
 open-weight models served from containers on the same machine.
 
+![Web UI](docs/ui.png)
+
+### The custom LoRA in action
+
+The same prompt and seed, **base SDXL** (left) vs **SDXL + our trained LoRA**
+(right). The LoRA pulls generations toward the polished, editorial interior-design
+aesthetic of the training set — warmer palettes, more curated furniture, magazine
+framing — while staying photorealistic.
+
+![Base vs LoRA](docs/lora_comparison.png)
+
 ---
 
 ## Architecture
